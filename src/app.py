@@ -4,6 +4,7 @@ import networkx as nx
 import heapq
 import pprint
 from heapdict import heapdict
+import folium
 
 def salvar_grafo_txt(graph, filename="./logs/graph_object.txt"):
     """
@@ -73,6 +74,44 @@ def dijkstra(graph, start_node, end_node, weight_type):
 
     return path, cheapest_path[end_node]
 
+def plot_city_graph(graph, route):
+    """
+    Plota o grafo com a rota destacada.
+    """
+    print("Plotando o grafo do mapa...")
+    fig, ax = ox.plot_graph(graph, node_size=0, edge_color="gray", edge_linewidth=0.5)
+    plt.show()
+    print("Grafo plotado com sucesso!")
+
+def plot_route_on_map(graph, shortest_path, fastest_path):
+    print("Gerando mapa interativo...")
+
+    # Pegando as coordenadas do ponto de partida para centralizar o mapa
+    start_node = shortest_path[0]
+    start_location = (graph.nodes[start_node]['y'], graph.nodes[start_node]['x'])
+
+    # Cria um mapa Folium manualmente, centrado no ponto de partida
+    m = folium.Map(location=start_location, zoom_start=16)
+
+    # Criam uma lista de tuplas (latitude, longitude) para cada nó do caminho
+    route_coords = [(graph.nodes[node]['y'], graph.nodes[node]['x']) for node in shortest_path]
+
+    # Usando a PolyLine pra desenhar uma linha conectando as coordenadas
+    folium.PolyLine(locations=route_coords, color='blue', weight=5).add_to(m)
+
+    # Adiciona marcadores de início e fim 
+    end_node = shortest_path[-1]
+    end_location = (graph.nodes[end_node]['y'], graph.nodes[end_node]['x'])
+    folium.Marker(location=start_location, popup='Início', icon=folium.Icon(color='green')).add_to(m)
+    folium.Marker(location=end_location, popup='Fim', icon=folium.Icon(color='red')).add_to(m)
+
+    # Ajusta o zoom para que toda a rota apareça na tela
+    m.fit_bounds(folium.PolyLine(locations=route_coords).get_bounds())
+
+    # 7. Salve o mapa final (note que salvamos 'm', o mapa original)
+    m.save('rota_curta.html')
+    print("Mapa salvo como 'rota_curta.html'. Abra este arquivo no seu navegador.")
+
 def main():
     # nome do lugar para baixar o mapa
     place_name = "Tamandaré, Pernambuco, Brazil"
@@ -82,10 +121,21 @@ def main():
     graph = ox.graph_from_place(place_name, network_type="drive")
     print("Mapa baixado com sucesso!")
 
-    print("Plotando o grafo do mapa...")
-    fig, ax = ox.plot_graph(graph, node_size=0, edge_color="gray", edge_linewidth=0.5)
-    plt.show()
-    print("Grafo plotado com sucesso!")
+    nodes_list = list(graph.nodes)
+    start_node = nodes_list[0]  # Pega o primeiro nó da lista
+    end_node = nodes_list[-1]   # Pega o último nó da lista
+    print(f"Nós de início e fim: {start_node}, {end_node}")
+    print(f"\nCalculando a rota mais CURTA de {start_node} para {end_node}...")
+
+    shortest_path, path_cost = dijkstra(graph, start_node, end_node, weight_type='length')
+    
+    if shortest_path and path_cost < float('inf'):
+        print(f"Rota mais CURTA encontrada com {len(shortest_path)} nós.")
+        print("Caminho:", shortest_path)
+        print(f"Custo total (distância): {path_cost:.2f} metros")
+        plot_route_on_map(graph, shortest_path, shortest_path)
+    else:
+        print("Nenhum caminho encontrado entre os nós especificados.")
 
 if __name__ == "__main__":
     main()
