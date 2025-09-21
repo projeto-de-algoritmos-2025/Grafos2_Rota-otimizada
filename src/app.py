@@ -5,6 +5,8 @@ import heapq
 import pprint
 from heapdict import heapdict
 import folium
+import streamlit as st
+from streamlit_folium import st_folium
 
 def salvar_grafo_txt(graph, filename="./logs/graph_object.txt"):
     """
@@ -122,7 +124,7 @@ def plot_city_graph(graph, route):
     plt.show()
     print("Grafo plotado com sucesso!")
 
-def plot_route_on_map(graph, shortest_path, fastest_path):
+def plot_route_on_map(graph, shortest_path, attrs):
     print("Gerando mapa interativo...")
 
     # Pegando as coordenadas do ponto de partida para centralizar o mapa
@@ -130,7 +132,7 @@ def plot_route_on_map(graph, shortest_path, fastest_path):
     start_location = (graph.nodes[start_node]['y'], graph.nodes[start_node]['x'])
 
     # Cria um mapa Folium manualmente, centrado no ponto de partida
-    m = folium.Map(location=start_location, zoom_start=16)
+    m = folium.Map(location=start_location, zoom_start=16, attr=attrs["attr"], tiles=attrs["tiles"])
 
     # Criam uma lista de tuplas (latitude, longitude) para cada nó do caminho
     route_coords = [(graph.nodes[node]['y'], graph.nodes[node]['x']) for node in shortest_path]
@@ -138,7 +140,7 @@ def plot_route_on_map(graph, shortest_path, fastest_path):
     # Usando a PolyLine pra desenhar uma linha conectando as coordenadas
     folium.PolyLine(locations=route_coords, color='blue', weight=5).add_to(m)
 
-    # Adiciona marcadores de início e fim 
+    # Adicionando marcadores de início e fim 
     end_node = shortest_path[-1]
     end_location = (graph.nodes[end_node]['y'], graph.nodes[end_node]['x'])
     folium.Marker(location=start_location, popup='Início', icon=folium.Icon(color='green')).add_to(m)
@@ -147,34 +149,133 @@ def plot_route_on_map(graph, shortest_path, fastest_path):
     # Ajusta o zoom para que toda a rota apareça na tela
     m.fit_bounds(folium.PolyLine(locations=route_coords).get_bounds())
 
-    # 7. Salve o mapa final (note que salvamos 'm', o mapa original)
-    m.save('rota_curta.html')
-    print("Mapa salvo como 'rota_curta.html'. Abra este arquivo no seu navegador.")
+    return m
+
+@st.cache_data
+def get_graph(place_name):
+    """
+    Baixa o grafo da cidade e o armazena em cache para não baixar novamente.
+    """
+    try:
+        graph = ox.graph_from_place(place_name, network_type="drive")
+        return graph
+    except Exception as e:
+        st.error(f"Não foi possível baixar o mapa para '{place_name}'. Verifique o nome do lugar.")
+        st.error(f"Erro: {e}")
+        return None
 
 def main():
-    # nome do lugar para baixar o mapa
-    place_name = "Tamandaré, Pernambuco, Brazil"
+    # --- Interface da Aplicação Streamlit ---
 
-    print(f"Baixando mapa de: {place_name}")
-    # O network_type pode ser 'drive', 'walk', 'bike', 'all', etc. Define o tipo de rotas a incluir. drive = estradas para carros
-    graph = ox.graph_from_place(place_name, network_type="drive")
-    print("Mapa baixado com sucesso!")
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] {
+            width: 400px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    nodes_list = list(graph.nodes)
-    start_node = nodes_list[0]  # Pega o primeiro nó da lista
-    end_node = nodes_list[-1]   # Pega o último nó da lista
-    print(f"Nós de início e fim: {start_node}, {end_node}")
-    print(f"\nCalculando a rota mais CURTA de {start_node} para {end_node}...")
+    st.set_page_config(page_title="Calculadora de Rotas", layout="wide")
+    st.title("🗺️ Calculando Rotas Mais Eficientes")
 
-    shortest_path, path_cost = dijkstra(graph, start_node, end_node, weight_type='length')
-    
-    if shortest_path and path_cost < float('inf'):
-        print(f"Rota mais CURTA encontrada com {len(shortest_path)} nós.")
-        print("Caminho:", shortest_path)
-        print(f"Custo total (distância): {path_cost:.2f} metros")
-        plot_route_on_map(graph, shortest_path, shortest_path)
-    else:
-        print("Nenhum caminho encontrado entre os nós especificados.")
+    st.session_state["tiles"] = "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
+    st.session_state["attr"] = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="http://www.openstreetmap.bzh/" target="_blank">Breton OpenStreetMap Team</a>'
+
+    # Estados da sessão para guardar os pontos, mapa, cliques e nível de zoom
+    if "start_point" not in st.session_state:
+        st.session_state["start_point"] = None
+        st.session_state["end_point"] = None
+        st.session_state["route_map"] = None
+        st.session_state["last_click"] = None
+        st.session_state["zoom_level"] = None
+
+    # --- Painel Lateral (Sidebar) ---
+    with st.sidebar:
+        st.header("Configurações")
+        place_name = st.text_input("Digite o nome da cidade (Ex: Tamandaré, Pernambuco)", "Tamandaré, Pernambuco, Brazil")
+
+        st.info("Clique no mapa para definir os pontos de partida e chegada.")
+
+        if st.session_state["start_point"]:
+            st.write(f"📍 **Partida:** {st.session_state['start_point']['lat']:.5f}, {st.session_state['start_point']['lng']:.5f}")
+        else:
+            st.write("📍 **Partida:** Não selecionada")
+
+        if st.session_state["end_point"]:
+            st.write(f"🏁 **Chegada:** {st.session_state['end_point']['lat']:.5f}, {st.session_state['end_point']['lng']:.5f}")
+        else:
+            st.write("🏁 **Chegada:** Não selecionada")
+
+        # O botão "Calcular Rota" só fica clicável se ambos os pontos forem selecionados
+        if st.button("Calcular Rota", type="primary", disabled=(st.session_state["start_point"] is None or st.session_state["end_point"] is None)):
+            with st.spinner("Calculando a rota..."):
+                graph = get_graph(place_name)
+                if graph:
+                    start_coords = (st.session_state["start_point"]['lat'], st.session_state["start_point"]['lng'])
+                    end_coords = (st.session_state["end_point"]['lat'], st.session_state["end_point"]['lng'])
+
+                    start_node = ox.distance.nearest_nodes(graph, X=start_coords[1], Y=start_coords[0])
+                    end_node = ox.distance.nearest_nodes(graph, X=end_coords[1], Y=end_coords[0])
+
+                    shortest_path, path_cost = dijkstra(graph, start_node, end_node, 'length')
+
+                    if shortest_path:
+                        st.success(f"Rota encontrada!")
+                        st.metric(label="Distância Total", value=f"{path_cost:.2f} metros")
+                        st.session_state["route_map"] = plot_route_on_map(graph, shortest_path, {"attr": st.session_state["attr"], "tiles": st.session_state["tiles"]})
+                    else:
+                        st.error("Não foi possível encontrar um caminho.")
+                        st.session_state["route_map"] = None
+
+        if st.button("Limpar Pontos"):
+            st.session_state["start_point"] = None
+            st.session_state["end_point"] = None
+            st.session_state["route_map"] = None
+            st.session_state["last_click"] = None
+            st.session_state["zoom_level"] = None
+            st.rerun()
+
+    # --- Mapa Principal ---
+    graph = get_graph(place_name)
+
+    if graph:
+        # Se uma rota já foi calculada, mostre o mapa com a rota
+        if st.session_state["route_map"]:
+            st_folium(st.session_state["route_map"], width='100%', height=500, returned_objects=[])
+        # Senão, mostre o mapa para seleção de pontos
+        else:
+            avg_y = sum(d['y'] for n, d in graph.nodes(data=True)) / len(graph.nodes)
+            avg_x = sum(d['x'] for n, d in graph.nodes(data=True)) / len(graph.nodes)
+
+            m = folium.Map(location=[avg_y, avg_x], zoom_start=14, tiles=st.session_state["tiles"], attr=st.session_state["attr"])
+
+            if st.session_state["start_point"]:
+                folium.Marker(
+                    location=[st.session_state["start_point"]['lat'], st.session_state["start_point"]['lng']],
+                    popup='Ponto de Partida', icon=folium.Icon(color='green')
+                ).add_to(m)
+            if st.session_state["end_point"]:
+                folium.Marker(
+                    location=[st.session_state["end_point"]['lat'], st.session_state["end_point"]['lng']],
+                    popup='Ponto de Chegada', icon=folium.Icon(color='red')
+                ).add_to(m)
+            
+            # Renderiza o mapa e captura o clique
+            map_data = st_folium(m, width='100%', height=500)
+
+            # Processa o clique para não usar st.rerun() a cada seleção
+            if map_data and map_data["last_clicked"] and map_data["last_clicked"] != st.session_state["last_click"]:
+                st.session_state["last_click"] = map_data["last_clicked"]
+                if st.session_state["start_point"] is None:
+                    st.session_state["start_point"] = map_data["last_clicked"]
+                elif st.session_state["end_point"] is None:
+                    st.session_state["end_point"] = map_data["last_clicked"]
+                st.session_state["zoom_level"] = map_data['zoom']
+                # Força um rerun apenas para atualizar a interface da sidebar e o novo marcador
+                st.rerun()
 
 if __name__ == "__main__":
     main()
