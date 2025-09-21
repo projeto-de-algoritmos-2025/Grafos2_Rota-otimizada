@@ -92,12 +92,10 @@ def dijkstra(graph, start_node, end_node, weight_type):
 
     return predecessors, path, cheapest_path[end_node]
 
-def set_edge_speed():
+def set_edge_speed(graph):
     """
     Adiciona um atributo 'speed' às arestas do grafo com base no tipo de via e atribui valores de velocidade.
     """
-
-    graph = st.session_state.graph
 
     # inicializa todas as velocidades como 10 km/h (padrão)
     nx.set_edge_attributes(graph, 10, name="speed")
@@ -215,6 +213,7 @@ def get_graph(place_name):
     """
     try:
         graph = ox.graph_from_place(place_name, network_type="drive")
+        set_edge_speed(graph)
         return graph
     except Exception as e:
         st.error(f"Não foi possível baixar o mapa para '{place_name}'. Verifique o nome do lugar.")
@@ -478,7 +477,6 @@ def main():
     st.session_state.tiles = "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
     st.session_state.attr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="http://www.openstreetmap.bzh/" target="_blank">Breton OpenStreetMap Team</a>'
 
-    set_edge_speed()
     render_sidebar()
     render_route_path()
     render_map()
