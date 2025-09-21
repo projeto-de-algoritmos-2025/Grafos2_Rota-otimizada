@@ -31,7 +31,7 @@ def dijkstra(graph, start_node, end_node, weight_type):
         Calcula a rota mais rápida entre dois nós usando o algoritmo de Dijkstra.
         O peso da aresta é a velocidade média da via ('speed').
     """
-    # TODO: implementar o weight_type='speed' aqui ou em outra função? (lembrando que o peso para as velocidades deve ser negativo para pegar sempre a maior velocidade - "ah mas Dijkstra não funciona com pesos negativos" - sei disso, mas nenhuma velocidade será positiva, o menor peso (mais negativo) sempre será a maior velocidade)
+    # TODO: implementar o weight_type='speed' aqui ou em outra função? (lembrando que o peso para as velocidades deve ser negativo para pegar sempre a maior velocidade - "ah mas Dijkstra não funciona com pesos negativos" - sei disso, mas nenhuma velocidade será positiva, o menor peso (mais negativo) sempre será a maior velocidade) ---- acho que é melhor implementar aqui mesmo para não ter que duplicar o código
     # TODO: tratar o caso de não existir caminho entre os nós
     # TODO: tratar o caso de o start_node ou end_node não existirem no grafo
     # TODO: tratar o caso de o start_node ser igual ao end_node
@@ -64,7 +64,18 @@ def dijkstra(graph, start_node, end_node, weight_type):
 
         # iteramos sobre os vizinhos do nó atual
         for _, neighbour, k, data in graph.edges(node, keys=True, data=True):
-            weight = data.get(weight_type, 1)
+            if weight_type == 'length':
+                weight = data.get('length', 1)
+            elif weight_type == 'speed':
+                # Calcula o tempo de viagem como distância/velocidade
+                length = data.get('length', 1)  # distância em metros
+                speed = data.get('speed', 30)   # velocidade em km/h
+                # Converte velocidade de km/h para m/s: speed_ms = speed * 1000 / 3600
+                speed_ms = speed * (1000 / 3600)
+                weight = length / speed_ms  # tempo em segundos
+            else:
+                weight = data.get(weight_type, 1)
+                
             new_cost = cheapest_path[node] + weight
 
             if new_cost < cheapest_path[neighbour]:
@@ -87,6 +98,10 @@ def dijkstra(graph, start_node, end_node, weight_type):
 
 def set_edge_speed(graph):
     """
+    Adiciona um atributo 'speed' às arestas do grafo com base no tipo de via e atribui valores de velocidade.
+    """
+
+    """
     Em construção :) 
     Adiciona um atributo 'speed' às arestas do grafo com base no tipo de via e atribui valores de velocidade.
     """
@@ -96,7 +111,9 @@ def set_edge_speed(graph):
     # TODO: temos a velocidade, mas vamos precisar do tempo tmb, que vai ser length/Media(speed), então quando o wight_type do dijkstra for speed, vamos usar tanto length quanto speed
     # TODO: Não sei se a gnt adiciona é no graph._edge ou graph._adj
     # inicializa todas as velocidades como 0
-    nx.set_edge_attributes(graph, float(0), name="speed")
+
+    # inicializa todas as velocidades como 30 km/h (padrão)
+    nx.set_edge_attributes(graph, 30, name="speed")
 
     highway_speeds = {
         'secondary_link': 50,
@@ -114,6 +131,18 @@ def set_edge_speed(graph):
         'construction': 5,
         'track': 15,
     }
+    
+    # Itera sobre todas as arestas e define a velocidade baseada no tipo de via
+    for u, v, k, data in graph.edges(keys=True, data=True):
+        highway_type = data.get('highway', 'unclassified')
+        if isinstance(highway_type, list):
+            # Se highway for uma lista, pega o primeiro elemento
+            highway_type = highway_type[0]
+        
+        if highway_type in highway_speeds:
+            data['speed'] = highway_speeds[highway_type]
+        else:
+            data['speed'] = 30  # velocidade padrão
 
 def plot_city_graph(graph, route):
     """
@@ -130,20 +159,64 @@ def plot_route_on_map(graph, shortest_path, attrs):
     # Cria um mapa Folium manualmente, centrado no ponto de partida
     m = folium.Map(location=start_location, zoom_start=16, attr=attrs["attr"], tiles=attrs["tiles"])
 
-    # Criam uma lista de tuplas (latitude, longitude) para cada nó do caminho
-    route_coords = [(graph.nodes[node]['y'], graph.nodes[node]['x']) for node in shortest_path]
+    # Rota mais curta (azul)
+    shortest_coords = [(graph.nodes[node]['y'], graph.nodes[node]['x']) for node in shortest_path]
+    folium.PolyLine(
+        locations=shortest_coords, 
+        color='blue', 
+        weight=6, 
+        opacity=0.8,
+        popup=folium.Popup('🔵 Rota mais curta (menor distância)', max_width=200),
+        tooltip='Rota mais curta'
+    ).add_to(m)
 
-    # Usando a PolyLine pra desenhar uma linha conectando as coordenadas
-    folium.PolyLine(locations=route_coords, color='blue', weight=5).add_to(m)
+    # Rota mais rápida (vermelha)
+    fastest_coords = [(graph.nodes[node]['y'], graph.nodes[node]['x']) for node in fastest_path]
+    folium.PolyLine(
+        locations=fastest_coords, 
+        color='red', 
+        weight=6, 
+        opacity=0.8,
+        popup=folium.Popup('🔴 Rota mais rápida (menor tempo)', max_width=200),
+        tooltip='Rota mais rápida'
+    ).add_to(m)
 
     # Adicionando marcadores de início e fim 
     end_node = shortest_path[-1]
     end_location = (graph.nodes[end_node]['y'], graph.nodes[end_node]['x'])
-    folium.Marker(location=start_location, popup='Início', icon=folium.Icon(color='green')).add_to(m)
-    folium.Marker(location=end_location, popup='Fim', icon=folium.Icon(color='red')).add_to(m)
+    
+    folium.Marker(
+        location=start_location, 
+        popup=folium.Popup('🟢 Ponto de Partida', max_width=150),
+        tooltip='Início da rota',
+        icon=folium.Icon(color='green', icon='play', prefix='fa')
+    ).add_to(m)
+    
+    folium.Marker(
+        location=end_location, 
+        popup=folium.Popup('🟠 Ponto de Destino', max_width=150),
+        tooltip='Fim da rota',
+        icon=folium.Icon(color='orange', icon='stop', prefix='fa')
+    ).add_to(m)
+
+    # Adiciona uma legenda HTML personalizada
+    legend_html = '''
+    <div style="position: fixed; 
+                top: 10px; right: 10px; width: 220px; height: 120px; 
+                background-color: white; border:2px solid grey; z-index:9999; 
+                font-size:14px; padding: 10px; border-radius: 5px;
+                box-shadow: 2px 2px 5px rgba(0,0,0,0.3);">
+    <h4 style="margin-top:0; color: #333;">🗺️ Legenda das Rotas</h4>
+    <p style="margin: 5px 0;"><span style="color:blue; font-weight:bold;">━━━</span> Rota mais curta (distância)</p>
+    <p style="margin: 5px 0;"><span style="color:red; font-weight:bold;">━━━</span> Rota mais rápida (tempo)</p>
+    <p style="margin: 5px 0;">🟢 Início &nbsp;&nbsp;&nbsp; 🟠 Destino</p>
+    </div>
+    '''
+    m.get_root().html.add_child(folium.Element(legend_html))
 
     # Ajusta o zoom para que toda a rota apareça na tela
-    m.fit_bounds(folium.PolyLine(locations=route_coords).get_bounds())
+    all_coords = shortest_coords + fastest_coords
+    m.fit_bounds(all_coords)
 
     return m
 
