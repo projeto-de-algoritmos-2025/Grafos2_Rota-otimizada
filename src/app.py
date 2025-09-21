@@ -31,16 +31,12 @@ def dijkstra(graph, start_node, end_node, weight_type):
         Calcula a rota mais rápida entre dois nós usando o algoritmo de Dijkstra.
         O peso da aresta é a velocidade média da via ('speed').
     """
-    # TODO: implementar o weight_type='speed' aqui ou em outra função? (lembrando que o peso para as velocidades deve ser negativo para pegar sempre a maior velocidade - "ah mas Dijkstra não funciona com pesos negativos" - sei disso, mas nenhuma velocidade será positiva, o menor peso (mais negativo) sempre será a maior velocidade) ---- acho que é melhor implementar aqui mesmo para não ter que duplicar o código
-    # TODO: tratar o caso de não existir caminho entre os nós
-    # TODO: tratar o caso de o start_node ou end_node não existirem no grafo
-    # TODO: tratar o caso de o start_node ser igual ao end_node
-    # TODO: tratar o caso de o weight_type ser inválido
     # TODO: comparar o tempo de execução usando heapq vs heapdict
 
     # para simularmos a heap do jeito que aprendemos, precisamos usar 2 estruturas de dados, uma para o atual custo e outra para saber a ordem minHeap
     cheapest_path = {node: float('inf') for node in graph.nodes}
     cheapest_path[start_node] = 0
+    fastest_path_length = 0
 
     # A gnt pode tentar usar heapdict para a estrutura da minHeap (com a heapq não é possivel apenas atualizar o custo de um nó já existente, ai inserimos o mesmo nó várias vezes com custos diferentes, mas eles são descartados logo quando retirados da heap, então não sei o quanto isso impacta na complexidade)
     #minHeap = heapdict()
@@ -69,7 +65,7 @@ def dijkstra(graph, start_node, end_node, weight_type):
             elif weight_type == 'speed':
                 # Calcula o tempo de viagem como distância/velocidade
                 length = data.get('length', 1)  # distância em metros
-                speed = data.get('speed', 30)   # velocidade em km/h
+                speed = data.get('speed', 20)   # velocidade em km/h
                 # Converte velocidade de km/h para m/s: speed_ms = speed * 1000 / 3600
                 speed_ms = speed * (1000 / 3600)
                 weight = length / speed_ms  # tempo em segundos
@@ -94,37 +90,28 @@ def dijkstra(graph, start_node, end_node, weight_type):
         node = predecessors[node]
     path.reverse()
 
-    return path, cheapest_path[end_node]
+    return predecessors, path, cheapest_path[end_node]
 
-def set_edge_speed(graph):
+def set_edge_speed():
     """
     Adiciona um atributo 'speed' às arestas do grafo com base no tipo de via e atribui valores de velocidade.
     """
 
-    """
-    Em construção :) 
-    Adiciona um atributo 'speed' às arestas do grafo com base no tipo de via e atribui valores de velocidade.
-    """
-    # OBS: esses TODOs não são necessariamente nessa função
-    # TODO: Iterar sobre o grafo e definir a velocidade com base no tipo de via
-    # TODO: descobrir todos os tipos de vias presentes no grafo (usar o check_highways.py)
-    # TODO: temos a velocidade, mas vamos precisar do tempo tmb, que vai ser length/Media(speed), então quando o wight_type do dijkstra for speed, vamos usar tanto length quanto speed
-    # TODO: Não sei se a gnt adiciona é no graph._edge ou graph._adj
-    # inicializa todas as velocidades como 0
+    graph = st.session_state.graph
 
-    # inicializa todas as velocidades como 30 km/h (padrão)
-    nx.set_edge_attributes(graph, 30, name="speed")
+    # inicializa todas as velocidades como 10 km/h (padrão)
+    nx.set_edge_attributes(graph, 10, name="speed")
 
     highway_speeds = {
-        'secondary_link': 50,
-        'primary_link': 60,
+        'secondary_link': 60,
+        'primary_link': 70,
         'path': 5,
         'pedestrian': 5,
-        'tertiary': 40,
-        'unclassified': 30,
+        'tertiary': 50,
+        'unclassified': 10,
         'service': 15,
-        'primary': 60,
-        'secondary': 50,
+        'primary': 70,
+        'secondary': 60,
         'living_street': 10,
         'residential': 20,
         'footway': 5,
@@ -151,7 +138,7 @@ def plot_city_graph(graph, route):
     fig, ax = ox.plot_graph(graph, node_size=0, edge_color="gray", edge_linewidth=0.5)
     plt.show()
 
-def plot_route_on_map(graph, shortest_path, attrs):
+def plot_route_on_map(graph, shortest_path, fastest_path, attrs):
     # Pegando as coordenadas do ponto de partida para centralizar o mapa
     start_node = shortest_path[0]
     start_location = (graph.nodes[start_node]['y'], graph.nodes[start_node]['x'])
@@ -205,7 +192,8 @@ def plot_route_on_map(graph, shortest_path, attrs):
                 top: 10px; right: 10px; width: 220px; height: 120px; 
                 background-color: white; border:2px solid grey; z-index:9999; 
                 font-size:14px; padding: 10px; border-radius: 5px;
-                box-shadow: 2px 2px 5px rgba(0,0,0,0.3);">
+                box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+                color: black;">
     <h4 style="margin-top:0; color: #333;">🗺️ Legenda das Rotas</h4>
     <p style="margin: 5px 0;"><span style="color:blue; font-weight:bold;">━━━</span> Rota mais curta (distância)</p>
     <p style="margin: 5px 0;"><span style="color:red; font-weight:bold;">━━━</span> Rota mais rápida (tempo)</p>
@@ -242,6 +230,7 @@ def initialize_session_state():
         st.session_state.end_point = None
         st.session_state.route_map = None
         st.session_state.shortest_path = None
+        st.session_state.fastest_path = None
         st.session_state.last_click = None
         st.session_state.zoom_level = None
         st.session_state.graph = None
@@ -318,6 +307,53 @@ def get_route_names(graph, route):
     # Junta os nomes das ruas em uma única string
     return "  ➡️  ".join(route_names)
 
+def compare_routes(shortest, fastest):
+    # Calcular e exibir a distância da rota mais curta (já está no 'cost' de dijkstra)
+    st.success(f"Rota mais ***curta*** encontrada com {len(shortest['path'])} nós!")
+    st.metric(label="Distância Total", value=f"{shortest['cost']/1000:.2f} km")
+
+    # Calcular o tempo total de viagem da rota mais curta
+    total_time_shortest_route = 0
+    graph = st.session_state.graph
+
+    for i in range(len(shortest['path']) - 1):
+        u = shortest['path'][i]
+        v = shortest['path'][i+1]
+        
+        edge_data = graph.get_edge_data(u, v, key=0)
+
+        if edge_data and 'length' in edge_data and 'speed' in edge_data:
+            length = edge_data['length']
+            speed = edge_data['speed']
+            
+            # Converter a velocidade de km/h para m/s
+            speed_ms = speed * (1000 / 3600)
+            
+            # Calcular o tempo de viagem e somar ao total
+            if speed_ms > 0:
+                total_time_shortest_route += length / speed_ms
+
+    st.metric(label="Tempo Total de Viagem", value=f"{total_time_shortest_route/60:.2f} minutos")
+
+    st.write("---") # Linha divisória para melhor visualização
+
+    # Calcular a distância total da rota mais rápida (implementação já feita)
+    total_length_fastest_route = 0
+    
+    for i in range(len(fastest['path']) - 1):
+        u = fastest['path'][i]
+        v = fastest['path'][i+1]
+        
+        edge_data = graph.get_edge_data(u, v, key=0)
+        
+        if edge_data and 'length' in edge_data:
+            total_length_fastest_route += edge_data['length']
+
+    # Exibir a distância e o tempo da rota mais rápida
+    st.success(f"Rota mais ***rápida*** encontrada com {len(fastest['path'])} nós!")
+    st.metric(label="Distância Total", value=f"{total_length_fastest_route/1000:.2f} km")
+    st.metric(label="Tempo Total de Viagem", value=f"{fastest['cost']/60:.2f} minutos")
+
 def calculate_route():
     """Lógica para calcular e plotar a rota."""
     if st.session_state.graph:
@@ -327,19 +363,34 @@ def calculate_route():
 
             start_node = ox.distance.nearest_nodes(st.session_state.graph, X=start_coords[1], Y=start_coords[0])
             end_node = ox.distance.nearest_nodes(st.session_state.graph, X=end_coords[1], Y=end_coords[0])
-            
-            shortest_path, path_cost = dijkstra(st.session_state.graph, start_node, end_node, 'length')
-            
-            if shortest_path:
-                st.success(f"Rota encontrada com {len(shortest_path)} nós!")
-                st.metric(label="Distância Total", value=f"{path_cost:.2f} metros")
+
+            shortest = {
+                "predecessors": None,
+                "path": None,
+                "cost": None
+            }
+            shortest["predecessors"], shortest["path"], shortest["cost"] = dijkstra(st.session_state.graph, start_node, end_node, 'length')
+
+            fastest = {
+                "predecessors": None,
+                "path": None,
+                "cost": None
+            }
+            fastest["predecessors"], fastest["path"], fastest["cost"] = dijkstra(st.session_state.graph, start_node, end_node, 'speed')
+
+            if shortest["path"] and fastest["path"]:
+
+                compare_routes(shortest, fastest)
+
 
                 st.session_state.route_map = plot_route_on_map(
                     st.session_state.graph, 
-                    shortest_path, 
+                    shortest["path"], 
+                    fastest["path"],
                     {"attr": st.session_state.attr, "tiles": st.session_state.tiles}
                 )
-                st.session_state.shortest_path = shortest_path
+                st.session_state.shortest_path = shortest["path"]
+                st.session_state.fastest_path = fastest["path"]
             else:
                 st.error("Não foi possível encontrar um caminho.")
                 st.session_state.route_map = None
@@ -390,10 +441,13 @@ def render_map():
 def render_route_path():
     """Exibe o caminho da rota na interface."""
     shortest_path = st.session_state.get("shortest_path")
-    if shortest_path and st.session_state.graph:
-        # Chama a nova função para obter os nomes das ruas
+    fastest_path = st.session_state.get("fastest_path")
+    if fastest_path and shortest_path and st.session_state.graph:
         route_names = get_route_names(st.session_state.graph, shortest_path)
-        st.info(f"🛣️ **Caminho da Rota:**\n\n{route_names}")
+        st.info(f"📏 **Caminho da Rota mais curta:**\n\n{route_names}")
+
+        route_names = get_route_names(st.session_state.graph, fastest_path)
+        st.info(f"🚀 **Caminho da Rota mais rápida:**\n\n{route_names}")
 
 def main():
     """Função principal que orquestra a aplicação Streamlit."""
@@ -424,6 +478,7 @@ def main():
     st.session_state.tiles = "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
     st.session_state.attr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="http://www.openstreetmap.bzh/" target="_blank">Breton OpenStreetMap Team</a>'
 
+    set_edge_speed()
     render_sidebar()
     render_route_path()
     render_map()
