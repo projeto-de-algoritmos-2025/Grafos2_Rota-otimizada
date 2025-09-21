@@ -29,13 +29,21 @@ def dijkstra(graph, start_node, end_node, weight_type):
         Calcula a rota mais rápida entre dois nós usando o algoritmo de Dijkstra.
         O peso da aresta é a velocidade média da via ('speed').
     """
-    
-    # para simularmos a heap do jeito que aprendemos, precisamos usar 2 estruturas de dados, uma para o atual custo e outra para saber a ordem de visita
+    # TODO: implementar o weight_type='speed' aqui ou em outra função? (lembrando que o peso para as velocidades deve ser negativo para pegar sempre a maior velocidade - "ah mas Dijkstra não funciona com pesos negativos" - sei disso, mas nenhuma velocidade será positiva, o menor peso (mais negativo) sempre será a maior velocidade)
+    # TODO: tratar o caso de não existir caminho entre os nós
+    # TODO: tratar o caso de o start_node ou end_node não existirem no grafo
+    # TODO: tratar o caso de o start_node ser igual ao end_node
+    # TODO: tratar o caso de o weight_type ser inválido
+    # TODO: comparar o tempo de execução usando heapq vs heapdict
+
+    # para simularmos a heap do jeito que aprendemos, precisamos usar 2 estruturas de dados, uma para o atual custo e outra para saber a ordem minHeap
     cheapest_path = {node: float('inf') for node in graph.nodes}
     cheapest_path[start_node] = 0
 
-    # vamos utilizar a heapdict para a estrutura da minHeap, pois com a heapq não seria possivel apenas atualizar o custo de um nó já existente, teriamos que inserir o mesmo nó várias vezes com custos diferentes e eles seriam descartados quando retirados da heap
+    # A gnt pode tentar usar heapdict para a estrutura da minHeap (com a heapq não é possivel apenas atualizar o custo de um nó já existente, ai inserimos o mesmo nó várias vezes com custos diferentes, mas eles são descartados logo quando retirados da heap, então não sei o quanto isso impacta na complexidade)
+    #minHeap = heapdict()
     minHeap = [(0, start_node)]
+    #minHeap[start_node] = 0
     heapq.heapify(minHeap)
 
     predecessors = {node : None for node in graph.nodes}
@@ -61,6 +69,7 @@ def dijkstra(graph, start_node, end_node, weight_type):
                 cheapest_path[neighbour] = new_cost
                 predecessors[neighbour] = node
                 # atualiza o custo na heap e dale siftup
+                #minHeap[neighbour] = new_cost
                 heapq.heappush(minHeap, (new_cost, neighbour))
 
 
@@ -73,6 +82,36 @@ def dijkstra(graph, start_node, end_node, weight_type):
     path.reverse()
 
     return path, cheapest_path[end_node]
+
+def set_edge_speed(graph):
+    """
+    Em construção :) 
+    Adiciona um atributo 'speed' às arestas do grafo com base no tipo de via e atribui valores de velocidade.
+    """
+    # OBS: esses TODOs não são necessariamente nessa função
+    # TODO: Iterar sobre o grafo e definir a velocidade com base no tipo de via
+    # TODO: descobrir todos os tipos de vias presentes no grafo (usar o check_highways.py)
+    # TODO: temos a velocidade, mas vamos precisar do tempo tmb, que vai ser length/Media(speed), então quando o wight_type do dijkstra for speed, vamos usar tanto length quanto speed
+    # TODO: Não sei se a gnt adiciona é no graph._edge ou graph._adj
+    # inicializa todas as velocidades como 0
+    nx.set_edge_attributes(graph, float(0), name="speed")
+
+    highway_speeds = {
+        'secondary_link': 50,
+        'primary_link': 60,
+        'path': 5,
+        'pedestrian': 5,
+        'tertiary': 40,
+        'unclassified': 30,
+        'service': 15,
+        'primary': 60,
+        'secondary': 50,
+        'living_street': 10,
+        'residential': 20,
+        'footway': 5,
+        'construction': 5,
+        'track': 15,
+    }
 
 def plot_city_graph(graph, route):
     """
