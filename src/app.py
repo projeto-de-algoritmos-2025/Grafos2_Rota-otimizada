@@ -119,14 +119,10 @@ def plot_city_graph(graph, route):
     """
     Plota o grafo com a rota destacada.
     """
-    print("Plotando o grafo do mapa...")
     fig, ax = ox.plot_graph(graph, node_size=0, edge_color="gray", edge_linewidth=0.5)
     plt.show()
-    print("Grafo plotado com sucesso!")
 
 def plot_route_on_map(graph, shortest_path, attrs):
-    print("Gerando mapa interativo...")
-
     # Pegando as coordenadas do ponto de partida para centralizar o mapa
     start_node = shortest_path[0]
     start_location = (graph.nodes[start_node]['y'], graph.nodes[start_node]['x'])
@@ -152,7 +148,7 @@ def plot_route_on_map(graph, shortest_path, attrs):
     return m
 
 @st.cache_data
-def get_graph(place_name):
+def set_graph(place_name):
     """
     Baixa o grafo da cidade e o armazena em cache para não baixar novamente.
     """
@@ -164,9 +160,178 @@ def get_graph(place_name):
         st.error(f"Erro: {e}")
         return None
 
-def main():
-    # --- Interface da Aplicação Streamlit ---
+def initialize_session_state():
+    """Inicializa o estado da sessão com valores padrão."""
+    if "start_point" not in st.session_state:
+        st.session_state.start_point = None
+        st.session_state.end_point = None
+        st.session_state.route_map = None
+        st.session_state.shortest_path = None
+        st.session_state.last_click = None
+        st.session_state.zoom_level = None
+        st.session_state.graph = None
 
+def render_sidebar():
+    """Cria e gerencia o painel lateral da aplicação."""
+    with st.sidebar:
+        st.header("Configurações")
+        st.session_state.place_name = st.text_input("Digite o nome da cidade (Ex: Tamandaré, Pernambuco)", "Tamandaré, Pernambuco, Brazil")
+
+        st.info("Clique no mapa para definir os pontos de partida e chegada.")
+
+        st.write(f"📍 **Partida:** {'Selecionada' if st.session_state.start_point else 'Não selecionada'}")
+        if st.session_state.start_point:
+            st.write(f"  > Lat: {st.session_state.start_point['lat']:.5f}, Lng: {st.session_state.start_point['lng']:.5f}")
+
+        st.write(f"🏁 **Chegada:** {'Selecionada' if st.session_state.end_point else 'Não selecionada'}")
+        if st.session_state.end_point:
+            st.write(f"  > Lat: {st.session_state.end_point['lat']:.5f}, Lng: {st.session_state.end_point['lng']:.5f}")
+
+        calculate_button = st.button(
+            "Calcular Rota",
+            type="primary",
+            disabled=(st.session_state.start_point is None or st.session_state.end_point is None)
+        )
+
+        if calculate_button:
+            calculate_route()
+
+        if st.button("Limpar Pontos"):
+            clear_points()
+            st.rerun()
+
+
+def get_route_names(graph, route):
+    """
+    Retorna uma string com o nome das ruas da rota, tratando casos onde
+    o nome é uma lista de strings.
+    """
+    route_names = []
+    # Itera sobre cada par de nós na rota
+    for i in range(len(route) - 1):
+        u = route[i]
+        v = route[i+1]
+        
+        # Acessa os dados da aresta entre os nós u e v
+        # O argumento keys=True é necessário para grafos multi-aresta
+        edge_data = graph.get_edge_data(u, v, key=0)
+
+        if edge_data:
+            # Pega o valor do atributo 'name', com um fallback se não existir
+            edge_name = edge_data.get('name')
+
+            # Trata o caso onde o 'name' é uma lista ou uma string
+            if isinstance(edge_name, list):
+                # Se for uma lista, pegue o primeiro nome
+                current_name = edge_name[0]
+            elif isinstance(edge_name, str):
+                # Se for uma string, use-a diretamente
+                current_name = edge_name
+            else:
+                # Se não houver nome, use um fallback
+                current_name = 'Sem nome'
+
+            # Adiciona o nome à lista, evitando duplicatas consecutivas
+            if not route_names or route_names[-1] != current_name:
+                route_names.append(current_name)
+    
+    # Junta os nomes das ruas em uma única string
+    return "  ➡️  ".join(route_names)
+
+def calculate_route():
+    """Lógica para calcular e plotar a rota."""
+    
+    # ---- debbugging
+    st.write(st.session_state.place_name)
+
+    if st.session_state.graph is None:
+        st.session_state.graph = set_graph(st.session_state.place_name)
+
+    if st.session_state.graph:
+
+        with st.spinner("Calculando a rota..."):
+            start_coords = (st.session_state.start_point['lat'], st.session_state.start_point['lng'])
+            end_coords = (st.session_state.end_point['lat'], st.session_state.end_point['lng'])
+
+            start_node = ox.distance.nearest_nodes(st.session_state.graph, X=start_coords[1], Y=start_coords[0])
+            end_node = ox.distance.nearest_nodes(st.session_state.graph, X=end_coords[1], Y=end_coords[0])
+            
+            shortest_path, path_cost = dijkstra(st.session_state.graph, start_node, end_node, 'length')
+            
+            if shortest_path:
+                st.success(f"Rota encontrada com {len(shortest_path)} nós!")
+                st.metric(label="Distância Total", value=f"{path_cost:.2f} metros")
+
+                st.session_state.route_map = plot_route_on_map(
+                    st.session_state.graph, 
+                    shortest_path, 
+                    {"attr": st.session_state.attr, "tiles": st.session_state.tiles}
+                )
+
+                st.session_state.shortest_path = shortest_path
+            else:
+                st.error("Não foi possível encontrar um caminho.")
+                st.session_state.route_map = None
+
+def clear_points():
+    """Limpa os pontos de início e fim do estado da sessão."""
+    st.session_state.start_point = None
+    st.session_state.end_point = None
+    st.session_state.route_map = None
+    st.session_state.last_click = None
+
+def render_map():
+    """Renderiza o mapa principal e gerencia a lógica de cliques."""
+    # ---- debbugging
+    st.write(st.session_state.place_name)
+
+    if st.session_state.graph is None:
+        st.session_state.graph = set_graph(st.session_state.place_name)
+
+    if st.session_state.graph:
+        if st.session_state.route_map:
+            # Exibe o mapa com a rota calculada
+            st_folium(st.session_state.route_map, width='100%', height=500, returned_objects=[])
+        else:
+            # Exibe o mapa para seleção de pontos
+            avg_y = sum(d['y'] for n, d in st.session_state.graph.nodes(data=True)) / len(st.session_state.graph.nodes)
+            avg_x = sum(d['x'] for n, d in st.session_state.graph.nodes(data=True)) / len(st.session_state.graph.nodes)
+
+            m = folium.Map(location=[avg_y, avg_x], zoom_start=14, tiles=st.session_state.tiles, attr=st.session_state.attr)
+
+            if st.session_state.start_point:
+                folium.Marker(
+                    location=[st.session_state.start_point['lat'], st.session_state.start_point['lng']],
+                    popup='Ponto de Partida', icon=folium.Icon(color='green')
+                ).add_to(m)
+            if st.session_state.end_point:
+                folium.Marker(
+                    location=[st.session_state.end_point['lat'], st.session_state.end_point['lng']],
+                    popup='Ponto de Chegada', icon=folium.Icon(color='red')
+                ).add_to(m)
+
+            map_data = st_folium(m, width='100%', height=500, returned_objects=['last_clicked', 'zoom'])
+
+            if map_data and map_data["last_clicked"] and map_data["last_clicked"] != st.session_state.last_click:
+                st.session_state.last_click = map_data["last_clicked"]
+                if st.session_state.start_point is None:
+                    st.session_state.start_point = map_data["last_clicked"]
+                elif st.session_state.end_point is None:
+                    st.session_state.end_point = map_data["last_clicked"]
+                st.session_state.zoom_level = map_data['zoom']
+                st.rerun()
+
+def render_route_path():
+    """Exibe o caminho da rota na interface."""
+    shortest_path = st.session_state.get("shortest_path")
+    if shortest_path and st.session_state.graph:
+        # Chama a nova função para obter os nomes das ruas
+        route_names = get_route_names(st.session_state.graph, shortest_path)
+        st.info(f"🛣️ Caminho da Rota:\n\n{route_names}")
+
+def main():
+    """Função principal que orquestra a aplicação Streamlit."""
+    st.set_page_config(page_title="Calculadora de Rotas", layout="wide")
     st.markdown(
         """
         <style>
@@ -177,105 +342,15 @@ def main():
         """,
         unsafe_allow_html=True,
     )
-
-    st.set_page_config(page_title="Calculadora de Rotas", layout="wide")
     st.title("🗺️ Calculando Rotas Mais Eficientes")
 
-    st.session_state["tiles"] = "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
-    st.session_state["attr"] = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="http://www.openstreetmap.bzh/" target="_blank">Breton OpenStreetMap Team</a>'
+    initialize_session_state()
+    st.session_state.tiles = "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
+    st.session_state.attr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="http://www.openstreetmap.bzh/" target="_blank">Breton OpenStreetMap Team</a>'
 
-    # Estados da sessão para guardar os pontos, mapa, cliques e nível de zoom
-    if "start_point" not in st.session_state:
-        st.session_state["start_point"] = None
-        st.session_state["end_point"] = None
-        st.session_state["route_map"] = None
-        st.session_state["last_click"] = None
-        st.session_state["zoom_level"] = None
-
-    # --- Painel Lateral (Sidebar) ---
-    with st.sidebar:
-        st.header("Configurações")
-        place_name = st.text_input("Digite o nome da cidade (Ex: Tamandaré, Pernambuco)", "Tamandaré, Pernambuco, Brazil")
-
-        st.info("Clique no mapa para definir os pontos de partida e chegada.")
-
-        if st.session_state["start_point"]:
-            st.write(f"📍 **Partida:** {st.session_state['start_point']['lat']:.5f}, {st.session_state['start_point']['lng']:.5f}")
-        else:
-            st.write("📍 **Partida:** Não selecionada")
-
-        if st.session_state["end_point"]:
-            st.write(f"🏁 **Chegada:** {st.session_state['end_point']['lat']:.5f}, {st.session_state['end_point']['lng']:.5f}")
-        else:
-            st.write("🏁 **Chegada:** Não selecionada")
-
-        # O botão "Calcular Rota" só fica clicável se ambos os pontos forem selecionados
-        if st.button("Calcular Rota", type="primary", disabled=(st.session_state["start_point"] is None or st.session_state["end_point"] is None)):
-            with st.spinner("Calculando a rota..."):
-                graph = get_graph(place_name)
-                if graph:
-                    start_coords = (st.session_state["start_point"]['lat'], st.session_state["start_point"]['lng'])
-                    end_coords = (st.session_state["end_point"]['lat'], st.session_state["end_point"]['lng'])
-
-                    start_node = ox.distance.nearest_nodes(graph, X=start_coords[1], Y=start_coords[0])
-                    end_node = ox.distance.nearest_nodes(graph, X=end_coords[1], Y=end_coords[0])
-
-                    shortest_path, path_cost = dijkstra(graph, start_node, end_node, 'length')
-
-                    if shortest_path:
-                        st.success(f"Rota encontrada!")
-                        st.metric(label="Distância Total", value=f"{path_cost:.2f} metros")
-                        st.session_state["route_map"] = plot_route_on_map(graph, shortest_path, {"attr": st.session_state["attr"], "tiles": st.session_state["tiles"]})
-                    else:
-                        st.error("Não foi possível encontrar um caminho.")
-                        st.session_state["route_map"] = None
-
-        if st.button("Limpar Pontos"):
-            st.session_state["start_point"] = None
-            st.session_state["end_point"] = None
-            st.session_state["route_map"] = None
-            st.session_state["last_click"] = None
-            st.session_state["zoom_level"] = None
-            st.rerun()
-
-    # --- Mapa Principal ---
-    graph = get_graph(place_name)
-
-    if graph:
-        # Se uma rota já foi calculada, mostre o mapa com a rota
-        if st.session_state["route_map"]:
-            st_folium(st.session_state["route_map"], width='100%', height=500, returned_objects=[])
-        # Senão, mostre o mapa para seleção de pontos
-        else:
-            avg_y = sum(d['y'] for n, d in graph.nodes(data=True)) / len(graph.nodes)
-            avg_x = sum(d['x'] for n, d in graph.nodes(data=True)) / len(graph.nodes)
-
-            m = folium.Map(location=[avg_y, avg_x], zoom_start=14, tiles=st.session_state["tiles"], attr=st.session_state["attr"])
-
-            if st.session_state["start_point"]:
-                folium.Marker(
-                    location=[st.session_state["start_point"]['lat'], st.session_state["start_point"]['lng']],
-                    popup='Ponto de Partida', icon=folium.Icon(color='green')
-                ).add_to(m)
-            if st.session_state["end_point"]:
-                folium.Marker(
-                    location=[st.session_state["end_point"]['lat'], st.session_state["end_point"]['lng']],
-                    popup='Ponto de Chegada', icon=folium.Icon(color='red')
-                ).add_to(m)
-            
-            # Renderiza o mapa e captura o clique
-            map_data = st_folium(m, width='100%', height=500)
-
-            # Processa o clique para não usar st.rerun() a cada seleção
-            if map_data and map_data["last_clicked"] and map_data["last_clicked"] != st.session_state["last_click"]:
-                st.session_state["last_click"] = map_data["last_clicked"]
-                if st.session_state["start_point"] is None:
-                    st.session_state["start_point"] = map_data["last_clicked"]
-                elif st.session_state["end_point"] is None:
-                    st.session_state["end_point"] = map_data["last_clicked"]
-                st.session_state["zoom_level"] = map_data['zoom']
-                # Força um rerun apenas para atualizar a interface da sidebar e o novo marcador
-                st.rerun()
+    render_sidebar()
+    render_route_path()
+    render_map()
 
 if __name__ == "__main__":
     main()
