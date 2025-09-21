@@ -148,7 +148,7 @@ def plot_route_on_map(graph, shortest_path, attrs):
     return m
 
 @st.cache_data
-def set_graph(place_name):
+def get_graph(place_name):
     """
     Baixa o grafo da cidade e o armazena em cache para não baixar novamente.
     """
@@ -162,6 +162,8 @@ def set_graph(place_name):
 
 def initialize_session_state():
     """Inicializa o estado da sessão com valores padrão."""
+    if "place_name" not in st.session_state:
+        st.session_state.place_name = "Tamandaré, Pernambuco, Brazil"
     if "start_point" not in st.session_state:
         st.session_state.start_point = None
         st.session_state.end_point = None
@@ -170,13 +172,20 @@ def initialize_session_state():
         st.session_state.last_click = None
         st.session_state.zoom_level = None
         st.session_state.graph = None
+        st.session_state.last_loaded_place = None
 
 def render_sidebar():
     """Cria e gerencia o painel lateral da aplicação."""
     with st.sidebar:
         st.header("Configurações")
-        st.session_state.place_name = st.text_input("Digite o nome da cidade (Ex: Tamandaré, Pernambuco)", "Tamandaré, Pernambuco, Brazil")
-
+        
+        # Usa uma chave para que o st.text_input atualize o st.session_state.place_name
+        st.session_state.place_name = st.text_input(
+            "Digite o nome da cidade",
+            st.session_state.place_name,
+            key="place_input"
+        )
+        
         st.info("Clique no mapa para definir os pontos de partida e chegada.")
 
         st.write(f"📍 **Partida:** {'Selecionada' if st.session_state.start_point else 'Não selecionada'}")
@@ -190,7 +199,7 @@ def render_sidebar():
         calculate_button = st.button(
             "Calcular Rota",
             type="primary",
-            disabled=(st.session_state.start_point is None or st.session_state.end_point is None)
+            disabled=(st.session_state.start_point is None or st.session_state.end_point is None or st.session_state.graph is None)
         )
 
         if calculate_button:
@@ -200,14 +209,12 @@ def render_sidebar():
             clear_points()
             st.rerun()
 
-
 def get_route_names(graph, route):
     """
     Retorna uma string com o nome das ruas da rota, tratando casos onde
     o nome é uma lista de strings.
     """
     route_names = []
-    # Itera sobre cada par de nós na rota
     for i in range(len(route) - 1):
         u = route[i]
         v = route[i+1]
@@ -240,15 +247,7 @@ def get_route_names(graph, route):
 
 def calculate_route():
     """Lógica para calcular e plotar a rota."""
-    
-    # ---- debbugging
-    st.write(st.session_state.place_name)
-
-    if st.session_state.graph is None:
-        st.session_state.graph = set_graph(st.session_state.place_name)
-
     if st.session_state.graph:
-
         with st.spinner("Calculando a rota..."):
             start_coords = (st.session_state.start_point['lat'], st.session_state.start_point['lng'])
             end_coords = (st.session_state.end_point['lat'], st.session_state.end_point['lng'])
@@ -267,7 +266,6 @@ def calculate_route():
                     shortest_path, 
                     {"attr": st.session_state.attr, "tiles": st.session_state.tiles}
                 )
-
                 st.session_state.shortest_path = shortest_path
             else:
                 st.error("Não foi possível encontrar um caminho.")
@@ -279,15 +277,10 @@ def clear_points():
     st.session_state.end_point = None
     st.session_state.route_map = None
     st.session_state.last_click = None
+    st.session_state.shortest_path = None
 
 def render_map():
     """Renderiza o mapa principal e gerencia a lógica de cliques."""
-    # ---- debbugging
-    st.write(st.session_state.place_name)
-
-    if st.session_state.graph is None:
-        st.session_state.graph = set_graph(st.session_state.place_name)
-
     if st.session_state.graph:
         if st.session_state.route_map:
             # Exibe o mapa com a rota calculada
@@ -327,7 +320,7 @@ def render_route_path():
     if shortest_path and st.session_state.graph:
         # Chama a nova função para obter os nomes das ruas
         route_names = get_route_names(st.session_state.graph, shortest_path)
-        st.info(f"🛣️ Caminho da Rota:\n\n{route_names}")
+        st.info(f"🛣️ **Caminho da Rota:**\n\n{route_names}")
 
 def main():
     """Função principal que orquestra a aplicação Streamlit."""
@@ -345,6 +338,16 @@ def main():
     st.title("🗺️ Calculando Rotas Mais Eficientes")
 
     initialize_session_state()
+
+    # Centralize o carregamento do grafo aqui
+    # Se o nome da cidade no input mudou, recarregue o grafo
+    if st.session_state.place_name != st.session_state.last_loaded_place:
+        with st.spinner(f"Carregando o mapa para {st.session_state.place_name}..."):
+            st.session_state.graph = get_graph(st.session_state.place_name)
+            st.session_state.last_loaded_place = st.session_state.place_name
+            clear_points() # Limpa os pontos antigos para a nova cidade
+            st.rerun()
+
     st.session_state.tiles = "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png"
     st.session_state.attr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles courtesy of <a href="http://www.openstreetmap.bzh/" target="_blank">Breton OpenStreetMap Team</a>'
 
