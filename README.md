@@ -13,12 +13,15 @@
 
 ## Sobre
 
-Descrição do projeto.
+Este projeto tem como objetivo desenvolver uma aplicação interativa que visualize e compare diferentes rotas entre dois pontos em uma área urbana. O resultado dessa comparação se dá apresentando o caminho mais curto e o mais rápido entre esses pontos, onde o mais curto utiliza-se da menor distância entre as arestas e o mais rápido utiliza a velocidade da via (considerada como o peso das arestas) para realizar a análise. Dessa forma, para a implementação foi utilizado o algoritmo de Dijkstra para calcular a rota mais curta e uma adaptação do mesmo algoritmo para encontrar a rota mais rápida, demonstrando a versatilidade de algoritmos de busca em grafos.
 
-## Linguagem e Framework
+<img width="1280" height="663" alt="image" src="https://github.com/user-attachments/assets/70cf7209-edc1-4913-9ba4-d10dbfa8c58d" />
 
-* **Linguagem**: 
-* **Framework**: 
+
+## Linguagem e Bibliotecas
+
+* **Linguagem**: Python
+* **Bibliotecas utilizadas**: Heapq ,folium, networkx, osmnx, streamlit
 
 ## Apresentação
 
@@ -28,17 +31,16 @@ A apresentação do projeto pode ser acessada [aqui](https://www.youtube.com).
 
 ### Pré-requisitos
 
-- Git
-- 
-- 
+- Git;
+- Python;
+- Streamlit;
+- Bibliotecas apresentadas em [requirements.txt](https://github.com/projeto-de-algoritmos-2025/Grafos2_Rota-otimizada/blob/main/requirements.txt).
 
 ### Executando o projeto
 
-Para executar o projeto localmente, basta clonar o repositório e instalar as dependências.
+- Para executar o projeto localmente, basta clonar o repositório e instalar as dependências disponíveis em [requirements.txt](https://github.com/projeto-de-algoritmos-2025/Grafos2_Rota-otimizada/blob/main/requirements.txt).
+- Após isso, execute o comando a seguir:
 
 ```bash
-# Clone o repositório
-git clone 
-
-...continuação...
+streamlit run app.py
 ```
