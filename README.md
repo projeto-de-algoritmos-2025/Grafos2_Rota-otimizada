@@ -25,7 +25,7 @@ Este projeto tem como objetivo desenvolver uma aplicação interativa que visual
 
 ## Apresentação
 
-A apresentação do projeto pode ser acessada [aqui](https://www.youtube.com).
+A apresentação do projeto pode ser acessada [aqui](https://www.youtube.com/watch?v=C614gKM6kvs).
 
 ## Guia de Instalação
 
@@ -38,8 +38,10 @@ A apresentação do projeto pode ser acessada [aqui](https://www.youtube.com).
 
 ### Executando o projeto
 
-- Para executar o projeto localmente, basta clonar o repositório e instalar as dependências disponíveis em [requirements.txt](https://github.com/projeto-de-algoritmos-2025/Grafos2_Rota-otimizada/blob/main/requirements.txt).
-- Após isso, execute o comando a seguir:
+- Para executar o projeto localmente, basta clonar o repositório e instalar as dependências disponíveis em [requirements.txt](https://github.com/projeto-de-algoritmos-2025/Grafos2_Rota-otimizada/blob/main/requirements.txt). com `pip install -r requirements.txt`.
+
+```bash
+- Após isso, acesse a pasta `src` e execute o comando a seguir:
 
 ```bash
 streamlit run app.py
